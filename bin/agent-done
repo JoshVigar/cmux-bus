@@ -49,6 +49,9 @@ event=$(jq -nc --arg id "$id" --arg ts "$ts" --arg from "$from" --arg to "$to" -
 agent_bus_append_event "$event"
 if [ "$to" != user ]; then
   target_surface=$(jq -r --arg n "$to" '.agents[$n]//empty' "$AGENT_BUS_AGENTS_FILE")
-  [ -n "$target_surface" ] && { cmux send --surface "$target_surface" "new done id=$id from=$from" >/dev/null; cmux send-key --surface "$target_surface" Enter >/dev/null; }
+  target_workspace=$(jq -r --arg n "$to" '.workspaces[$n]//empty' "$AGENT_BUS_AGENTS_FILE" 2>/dev/null)
+  ws_args=""
+  [ -n "$target_workspace" ] && ws_args="--workspace $target_workspace"
+  [ -n "$target_surface" ] && { cmux send $ws_args --surface "$target_surface" "new done id=$id from=$from" >/dev/null; cmux send-key $ws_args --surface "$target_surface" Enter >/dev/null; }
 fi
 echo "$id"

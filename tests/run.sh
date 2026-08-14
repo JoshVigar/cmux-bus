@@ -421,8 +421,8 @@ CMUX
         env -u AGENT_BUS_SCOPE PATH="$fakebin:$PATH" HOME="$home" CMUX_LOG="$cmux_log" \
             CMUX_WORKSPACE_ID=ws-a CMUX_SURFACE_ID=sa1 \
             "$repo_root/bin/agent-send" codex handoff "ping" >/dev/null
-        grep -q "send --surface sa2 " "$cmux_log" || fail "ws-a send did not target its own peer surface"
-        ! grep -q "surface sb2" "$cmux_log" || fail "ws-a send leaked into ws-b peer surface"
+        grep -q "\-\-surface sa2" "$cmux_log" || fail "ws-a send did not target its own peer surface"
+        ! grep -q "\-\-surface sb2" "$cmux_log" || fail "ws-a send leaked into ws-b peer surface"
 
         # ws-a only knows ws-a peers (codex); ws-b's bus is invisible from here.
         if env -u AGENT_BUS_SCOPE PATH="$fakebin:$PATH" HOME="$home" \

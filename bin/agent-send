@@ -142,7 +142,12 @@ if ! { [ "$recipients" = "user" ]; }; then
     # currently selected workspace, so an alive peer in a backgrounded
     # workspace would look stale and weaken this check whenever the user is
     # looking elsewhere. surface-health defaults to $CMUX_WORKSPACE_ID.
-    live=$(cmux --id-format both surface-health 2>/dev/null | awk '/type=terminal/ {print $2}')
+    #
+    # SKIP liveness check with explicit bus dir: peers may be in other
+    # workspaces invisible to this workspace's surface-health.
+    if [ -z "$AGENT_BUS_CLI_DIR" ] && [ -z "${AGENT_BUS_DIR+set}" ]; then
+        live=$(cmux --id-format both surface-health 2>/dev/null | awk '/type=terminal/ {print $2}')
+    fi
 fi
 
 while IFS= read -r recipient; do
@@ -195,8 +200,11 @@ while IFS= read -r recipient; do
 
     if [ "$recipient" != "user" ]; then
         target_surface=$(jq -r --arg n "$recipient" '.agents[$n] // empty' "$AGENT_BUS_AGENTS_FILE")
-        cmux send --surface "$target_surface" "new $type id=$id from=$from" >/dev/null
-        cmux send-key --surface "$target_surface" Enter >/dev/null
+        target_workspace=$(jq -r --arg n "$recipient" '.workspaces[$n] // empty' "$AGENT_BUS_AGENTS_FILE" 2>/dev/null)
+        ws_args=""
+        [ -n "$target_workspace" ] && ws_args="--workspace $target_workspace"
+        cmux send $ws_args --surface "$target_surface" "new $type id=$id from=$from" >/dev/null
+        cmux send-key $ws_args --surface "$target_surface" Enter >/dev/null
     fi
 
     echo "$id"

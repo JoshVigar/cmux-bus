@@ -131,7 +131,11 @@ EOF
 }
 
 agent_bus_set_paths
-handle_workspace_stub
+# Skip cwd artifacts (AGENTS.md, .agents/ stub, .gitignore) when using an
+# explicit bus dir — the bus lives elsewhere, no reason to litter the repo.
+if [ -z "$AGENT_BUS_CLI_DIR" ] && [ -z "${AGENT_BUS_DIR+set}" ]; then
+    handle_workspace_stub
+fi
 dir="$AGENT_BUS_DIR_EFFECTIVE"
 mkdir -p "$dir"
 touch "$dir/bus.jsonl"
@@ -142,13 +146,19 @@ agents_file="$dir/agents.json"
 # Presence in surface-health means alive; closed panes disappear. Do NOT
 # require in_window=true (that only marks the selected workspace), or the purge
 # would wrongly target alive agents whenever their workspace is backgrounded.
-live=$(cmux --id-format both surface-health 2>/dev/null | awk '/type=terminal/ {print $2}')
+#
+# SKIP purge when using an explicit bus dir (--bus-dir / AGENT_BUS_DIR): the bus
+# may span multiple workspaces, and surface-health only sees the caller's
+# workspace — surfaces from other workspaces would be wrongly purged.
 purged=""
-if [ -n "$live" ]; then
-    live_json=$(printf '%s\n' "$live" | jq -R . | jq -s .)
-    purged=$(jq -r --argjson live "$live_json" '.agents | to_entries | map(select(.value as $u | $live | index($u) | not)) | map(.key) | join(",")' "$agents_file")
-    tmp=$(mktemp)
-    jq --argjson live "$live_json" '.agents = (.agents | with_entries(select(.value as $u | $live | index($u))))' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
+if [ -z "$AGENT_BUS_CLI_DIR" ] && [ -z "${AGENT_BUS_DIR+set}" ]; then
+    live=$(cmux --id-format both surface-health 2>/dev/null | awk '/type=terminal/ {print $2}')
+    if [ -n "$live" ]; then
+        live_json=$(printf '%s\n' "$live" | jq -R . | jq -s .)
+        purged=$(jq -r --argjson live "$live_json" '.agents | to_entries | map(select(.value as $u | $live | index($u) | not)) | map(.key) | join(",")' "$agents_file")
+        tmp=$(mktemp)
+        jq --argjson live "$live_json" '.agents = (.agents | with_entries(select(.value as $u | $live | index($u))))' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
+    fi
 fi
 
 renamed=""
@@ -161,6 +171,14 @@ renamed=$(jq -r --arg n "$name" --arg s "$surface" \
     '.agents | to_entries | map(select(.value == $s and .key != $n)) | map(.key) | join(",")' "$agents_file")
 jq --arg n "$name" --arg s "$surface" \
     '.agents |= (with_entries(select(.value != $s)) + {($n): $s})' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
+
+# Store workspace ID for cross-workspace signaling (shared bus via --bus-dir).
+workspace_id="${CMUX_WORKSPACE_ID:-}"
+if [ -n "$workspace_id" ]; then
+    tmp=$(mktemp)
+    jq --arg n "$name" --arg w "$workspace_id" \
+        '.workspaces = ((.workspaces // {}) + {($n): $w})' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
+fi
 
 # Keep the lead pointer coherent with the registry: follow a same-surface
 # rename, drop it when the lead's surface was purged, and let --lead claim it.
@@ -361,7 +379,9 @@ BLOCK
 )
 fi
 
-if [ ! -f "$agents_md" ]; then
+if [ -n "$AGENT_BUS_CLI_DIR" ] || [ -n "${AGENT_BUS_DIR+set}" ]; then
+    agents_md_action="skipped (explicit bus dir)"
+elif [ ! -f "$agents_md" ]; then
     printf '%s\n' "$block" > "$agents_md"
     agents_md_action="created"
 elif grep -qF "$mark_start" "$agents_md"; then
