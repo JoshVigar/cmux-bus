@@ -73,18 +73,31 @@ agent_bus_need_agents
 me="$(agent_bus_current_agent)"
 lead="$(agent_bus_lead)"
 
-# Close a pane (best-effort) and remove the name from both .agents and .meta,
-# clearing the lead pointer if we just dismissed the lead.
+# Close a pane (best-effort) and remove the name from .agents, .meta and
+# .workspaces, clearing the lead pointer if we just dismissed the lead.
+# cmux close-surface can't resolve surface UUIDs in other workspaces
+# (returns not_found while the pane is alive), so fall back to closing the
+# agent's recorded workspace — but only when no other registered agent
+# shares it and it isn't the caller's own workspace.
 dismiss_one() {
     local name="$1"
-    local surface closed_note tmp
+    local surface ws ws_shared closed_note tmp err
     surface="$(jq -r --arg n "$name" '.agents[$n]' "$AGENT_BUS_AGENTS_FILE")"
+    ws="$(jq -r --arg n "$name" '(.workspaces // {})[$n] // empty' "$AGENT_BUS_AGENTS_FILE")"
 
     if [ "$keep_pane" -eq 0 ]; then
-        if cmux close-surface --surface "$surface" >/dev/null 2>&1; then
+        if err="$(cmux close-surface --surface "$surface" 2>&1)"; then
             closed_note="closed pane $surface"
         else
-            closed_note="pane $surface already gone — deregistering anyway"
+            ws_shared="$(jq -r --arg n "$name" --arg w "$ws" \
+                '[(.workspaces // {}) | to_entries[] | select(.value == $w and .key != $n)] | length' \
+                "$AGENT_BUS_AGENTS_FILE")"
+            if [ -n "$ws" ] && [ "$ws" != "${CMUX_WORKSPACE_ID:-}" ] && [ "$ws_shared" = "0" ] \
+                && cmux close-workspace --workspace "$ws" >/dev/null 2>&1; then
+                closed_note="closed workspace $ws (surface $surface not addressable: $err)"
+            else
+                closed_note="could not close pane $surface ($err) — deregistering anyway"
+            fi
         fi
     else
         closed_note="left pane $surface open"
@@ -94,6 +107,7 @@ dismiss_one() {
     jq --arg n "$name" '
         .agents |= (with_entries(select(.key != $n)))
         | (if (.meta) then .meta |= (with_entries(select(.key != $n))) else . end)
+        | (if (.workspaces) then .workspaces |= (with_entries(select(.key != $n))) else . end)
         | (if (.lead == $n) then del(.lead) else . end)
     ' "$AGENT_BUS_AGENTS_FILE" > "$tmp" && mv "$tmp" "$AGENT_BUS_AGENTS_FILE"
 
