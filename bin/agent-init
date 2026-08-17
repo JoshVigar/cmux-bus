@@ -40,6 +40,7 @@ as_provider=""
 args=()
 while [ $# -gt 0 ]; do
     case "$1" in
+        -h|--help) usage;;
         --lead)   lead_flag=1;;
         --as)     [ $# -ge 2 ] || usage; as_provider="$2"; shift;;
         --as=*)   as_provider="${1#--as=}";;
@@ -130,11 +131,23 @@ EOF
     ensure_agents_gitignore
 }
 
+cwd_real="$(pwd -P)"
+home_real="$(cd "$HOME" 2>/dev/null && pwd -P)"
 agent_bus_set_paths
 # Skip cwd artifacts (AGENTS.md, .agents/ stub, .gitignore) when using an
 # explicit bus dir — the bus lives elsewhere, no reason to litter the repo.
 if [ -z "$AGENT_BUS_CLI_DIR" ] && [ -z "${AGENT_BUS_DIR+set}" ]; then
-    handle_workspace_stub
+    # $HOME is nobody's project. Writing AGENTS.md and a .agents/ stub there
+    # litters the home dir and is never what the caller meant, so skip the cwd
+    # artifacts and say so rather than doing it silently.
+    #
+    # Compare resolved paths, not strings: a trailing slash on $HOME or reaching
+    # home through a symlink would slip past a plain string comparison.
+    if [ "$cwd_real" = "$home_real" ]; then
+        echo "agent-init: cwd is \$HOME, skipping AGENTS.md / .agents stub" >&2
+    else
+        handle_workspace_stub
+    fi
 fi
 dir="$AGENT_BUS_DIR_EFFECTIVE"
 mkdir -p "$dir"
@@ -381,6 +394,9 @@ fi
 
 if [ -n "$AGENT_BUS_CLI_DIR" ] || [ -n "${AGENT_BUS_DIR+set}" ]; then
     agents_md_action="skipped (explicit bus dir)"
+elif [ "$cwd_real" = "$home_real" ]; then
+    # Same reason as the .agents stub above: never drop an AGENTS.md in $HOME.
+    agents_md_action="skipped (cwd is \$HOME)"
 elif [ ! -f "$agents_md" ]; then
     printf '%s\n' "$block" > "$agents_md"
     agents_md_action="created"
@@ -429,4 +445,31 @@ if [ -n "$renamed" ]; then
 fi
 if [ -n "$purged" ]; then
     echo "agent-init: purged stale entries: $purged"
+fi
+
+# One pane registered on two buses is a split brain: handoffs can land on a bus
+# nobody is reading. Warn (don't refuse: spanning buses is occasionally
+# deliberate) and name the exact cleanup command.
+#
+# Coverage is the standard state-dir buses plus a repo-scoped .agents/ in cwd. A
+# bus at an arbitrary --bus-dir path outside those cannot be discovered, so
+# absence of a warning is not proof you are on exactly one bus.
+# Newline-delimited, not space-delimited: bus paths may contain spaces.
+other_buses=""
+for other in "$HOME/.local/state/cmux-bus/shared/agents.json" \
+             "$HOME"/.local/state/cmux-bus/workspaces/*/agents.json \
+             "$cwd_real/.agents/agents.json"; do
+    [ -f "$other" ] || continue
+    [ "$other" = "$agents_file" ] && continue
+    if jq -e --arg s "$surface" '.agents | to_entries | any(.value == $s)' "$other" >/dev/null 2>&1; then
+        other_buses="$other_buses$(dirname "$other")
+"
+    fi
+done
+if [ -n "$other_buses" ]; then
+    echo "agent-init: warning: this pane is ALSO registered on another bus:" >&2
+    printf '%s' "$other_buses" | while IFS= read -r stray; do
+        [ -n "$stray" ] || continue
+        echo "agent-init:   agent-dismiss --bus-dir \"$stray\" --keep-pane $name" >&2
+    done
 fi
