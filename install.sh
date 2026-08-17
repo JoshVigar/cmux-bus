@@ -61,7 +61,17 @@ for line in "${linked[@]}"; do
 done
 
 claude_rules="$HOME/.claude/rules"
-if [ -d "$claude_rules" ]; then
+# Opt-in, not "install if the dir happens to exist". This rule is always-on
+# context (~1,200 tokens on EVERY turn of EVERY session, bus or not), which is
+# the wrong default when the /bus skill loads the same protocol on demand at
+# zero idle cost. Merely creating ~/.claude/rules for an unrelated purpose used
+# to be enough to switch it on, silently, on the next agent-update.
+if [ "${CMUX_BUS_INSTALL_RULE:-0}" != "1" ]; then
+    echo "skipped Claude rule (set CMUX_BUS_INSTALL_RULE=1 to install it;"
+    echo "  the /bus skill covers the same protocol on demand)"
+elif [ ! -d "$claude_rules" ]; then
+    echo "skipped Claude rule: $claude_rules does not exist"
+else
     rule_dst="$claude_rules/agents-protocol.md"
     cat > "$rule_dst" <<'RULE'
 # Multi-Agent Bus (cmux)
