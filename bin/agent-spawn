@@ -282,7 +282,7 @@ echo "agent-spawn: '$name' registered on bus $AGENT_BUS_DIR_EFFECTIVE"
 # show provenance and agent-dismiss act on the team the lead built.
 spawned_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 meta_model="${model:-default}"
-tmp=$(mktemp)
+tmp=$(agent_bus_mktemp)
 jq --arg n "$name" --arg p "$provider" --arg m "$meta_model" --arg by "$me" --arg at "$spawned_at" \
     '.meta = ((.meta // {}) + {($n): {provider:$p, model:$m, spawned_by:$by, spawned_at:$at}})' \
     "$AGENT_BUS_AGENTS_FILE" > "$tmp" && mv "$tmp" "$AGENT_BUS_AGENTS_FILE"

@@ -76,7 +76,7 @@ do_install() {
         return 1
     }
     cp "$file" "$file.bak-$(date -u +%Y%m%dT%H%M%SZ)"
-    tmp="$(mktemp)"
+    tmp="$(agent_bus_mktemp)"
     jq --arg cmd "$cmd" '
         def strip: map(select(((.hooks // []) | map(.command) | any(contains("agent-lead-guard"))) | not));
         .hooks //= {}
@@ -104,7 +104,7 @@ do_uninstall() {
     [ -f "$file" ] || { echo "agent-lead-guard: $file does not exist — nothing to do"; return 0; }
     jq -e . "$file" >/dev/null 2>&1 || { echo "agent-lead-guard: $file is not valid JSON — aborting" >&2; return 1; }
     cp "$file" "$file.bak-$(date -u +%Y%m%dT%H%M%SZ)"
-    tmp="$(mktemp)"
+    tmp="$(agent_bus_mktemp)"
     jq '
         def strip: map(select(((.hooks // []) | map(.command) | any(contains("agent-lead-guard"))) | not));
         if .hooks then

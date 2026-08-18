@@ -74,7 +74,7 @@ case "$action" in
             echo "agent-lead: have them run 'agent-init $target' first" >&2
             exit 1
         }
-        tmp=$(mktemp)
+        tmp=$(agent_bus_mktemp)
         # Strict is the default: store "relaxed" only when asked, else drop the
         # key so the bus reads as strict.
         if [ "$relaxed_flag" -eq 1 ]; then
@@ -86,7 +86,7 @@ case "$action" in
         echo "agent-lead: lead set to '$target' ($([ "$relaxed_flag" -eq 1 ] && echo relaxed || echo strict))"
         ;;
     clear)
-        tmp=$(mktemp)
+        tmp=$(agent_bus_mktemp)
         jq 'del(.lead) | del(.lead_policy)' "$AGENT_BUS_AGENTS_FILE" > "$tmp" && mv "$tmp" "$AGENT_BUS_AGENTS_FILE"
         echo "agent-lead: lead cleared — peer-to-peer mode"
         ;;
@@ -95,7 +95,7 @@ case "$action" in
             echo "agent-lead: no lead set — set one first with 'agent-lead set <name>'" >&2
             exit 1
         }
-        tmp=$(mktemp)
+        tmp=$(agent_bus_mktemp)
         if [ "$target" = "relaxed" ]; then
             jq '.lead_policy = "relaxed"' "$AGENT_BUS_AGENTS_FILE" > "$tmp"
         else

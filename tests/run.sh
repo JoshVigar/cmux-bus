@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tmp_root="$(mktemp -d)"
+tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/agent-bus-test.XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
 pass_count=0
@@ -209,7 +209,7 @@ case "$1" in
                     esac
                 done
                 if [ -n "$name" ] && [ -f .agents/agents.json ]; then
-                    tmp=$(mktemp)
+                    tmp=$(mktemp "${TMPDIR:-/tmp}/agent-bus-test.XXXXXX")
                     jq --arg n "$name" '.agents[$n] = "s-spawned"' .agents/agents.json > "$tmp" && mv "$tmp" .agents/agents.json
                 fi
                 ;;
@@ -756,7 +756,7 @@ test_agent_roster_shows_lead() {
     (
         cd "$workspace"
         write_agents
-        tmp=$(mktemp)
+        tmp=$(mktemp "${TMPDIR:-/tmp}/agent-bus-test.XXXXXX")
         jq '.lead = "claude"' .agents/agents.json > "$tmp" && mv "$tmp" .agents/agents.json
 
         out=$(PATH="$fakebin:$PATH" CMUX_SURFACE_ID=s1 "$repo_root/bin/agent-roster")
@@ -2073,7 +2073,7 @@ test_agent_spawn_refuses_live_name_collision() {
         cd "$workspace"
         PATH="$fakebin:$PATH" CMUX_SURFACE_ID=s-lead "$repo_root/bin/agent-init" claude >/dev/null
         # Pre-register a worker on the live surface s-spawned.
-        tmp=$(mktemp)
+        tmp=$(mktemp "${TMPDIR:-/tmp}/agent-bus-test.XXXXXX")
         jq '.agents["worker-codex"] = "s-spawned"' .agents/agents.json > "$tmp" && mv "$tmp" .agents/agents.json
         # Spawning the same name must refuse to clobber the live agent.
         ! AGENT_SPAWN_SETTLE=0 PATH="$fakebin:$PATH" CMUX_SURFACE_ID=s-lead \

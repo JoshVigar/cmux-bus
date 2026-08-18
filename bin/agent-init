@@ -169,13 +169,13 @@ if [ -z "$AGENT_BUS_CLI_DIR" ] && [ -z "${AGENT_BUS_DIR+set}" ]; then
     if [ -n "$live" ]; then
         live_json=$(printf '%s\n' "$live" | jq -R . | jq -s .)
         purged=$(jq -r --argjson live "$live_json" '.agents | to_entries | map(select(.value as $u | $live | index($u) | not)) | map(.key) | join(",")' "$agents_file")
-        tmp=$(mktemp)
+        tmp=$(agent_bus_mktemp)
         jq --argjson live "$live_json" '.agents = (.agents | with_entries(select(.value as $u | $live | index($u))))' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
     fi
 fi
 
 renamed=""
-tmp=$(mktemp)
+tmp=$(agent_bus_mktemp)
 # A surface is one pane is one agent: enforce a 1:1 surface->name mapping. Drop
 # any other name already attached to this surface before registering, so
 # re-running agent-init with a new name in the same pane renames the agent
@@ -188,7 +188,7 @@ jq --arg n "$name" --arg s "$surface" \
 # Store workspace ID for cross-workspace signaling (shared bus via --bus-dir).
 workspace_id="${CMUX_WORKSPACE_ID:-}"
 if [ -n "$workspace_id" ]; then
-    tmp=$(mktemp)
+    tmp=$(agent_bus_mktemp)
     jq --arg n "$name" --arg w "$workspace_id" \
         '.workspaces = ((.workspaces // {}) + {($n): $w})' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
 fi
@@ -204,17 +204,17 @@ if [ "$lead_flag" -eq 1 ]; then
     else
         lead_note="lead is '$name'"
     fi
-    tmp=$(mktemp)
+    tmp=$(agent_bus_mktemp)
     jq --arg n "$name" '.lead = $n' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
     current_lead="$name"
 elif [ -n "$prev_lead" ]; then
     if [ -n "$renamed" ] && printf ',%s,' "$renamed" | grep -qF ",$prev_lead,"; then
-        tmp=$(mktemp)
+        tmp=$(agent_bus_mktemp)
         jq --arg n "$name" '.lead = $n' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
         lead_note="lead followed rename: '$prev_lead' -> '$name'"
         current_lead="$name"
     elif ! jq -e --arg l "$prev_lead" '.agents | has($l)' "$agents_file" >/dev/null; then
-        tmp=$(mktemp)
+        tmp=$(agent_bus_mktemp)
         jq 'del(.lead)' "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
         lead_note="cleared stale lead '$prev_lead'"
         current_lead=""
@@ -225,7 +225,7 @@ fi
 # agent (a hand-started agent has no spawned provenance otherwise). Merge so a
 # later agent-init never erases spawn metadata already on this name.
 if [ -n "$as_provider" ]; then
-    tmp=$(mktemp)
+    tmp=$(agent_bus_mktemp)
     jq --arg n "$name" --arg p "$as_provider" \
         '.meta = ((.meta // {}) + {($n): ((.meta[$n] // {}) + {provider:$p, self:true})})' \
         "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
@@ -235,7 +235,7 @@ fi
 # registry: drop metadata for any name no longer present in .agents (purged dead
 # surfaces or renamed-away names), so the roster never shows ghost provenance.
 if jq -e 'has("meta")' "$agents_file" >/dev/null 2>&1; then
-    tmp=$(mktemp)
+    tmp=$(agent_bus_mktemp)
     jq '.agents as $a | .meta |= with_entries(select(.key as $k | $a | has($k)))' \
         "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
 fi
@@ -401,7 +401,7 @@ elif [ ! -f "$agents_md" ]; then
     printf '%s\n' "$block" > "$agents_md"
     agents_md_action="created"
 elif grep -qF "$mark_start" "$agents_md"; then
-    out=$(mktemp)
+    out=$(agent_bus_mktemp)
     in_block=0
     emitted=0
     while IFS= read -r line || [ -n "$line" ]; do

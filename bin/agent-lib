@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+# Temp files must live under $TMPDIR. A bare `mktemp` on macOS resolves via
+# _CS_DARWIN_USER_TEMP_DIR to /var/folders/... and IGNORES $TMPDIR entirely (so
+# does `mktemp -t prefix`); only an explicit template honours it. Agent sandboxes
+# (e.g. Claude Code) commonly allow writes under $TMPDIR but deny /var/folders,
+# where a bare mktemp fails with "Operation not permitted" and takes the whole
+# command down under `set -e`.
+agent_bus_mktemp() {
+    mktemp "${TMPDIR:-/tmp}/agent-bus.XXXXXX"
+}
+
+agent_bus_mktemp_dir() {
+    mktemp -d "${TMPDIR:-/tmp}/agent-bus.XXXXXX"
+}
+
 agent_script_path() {
     local script_path="$1"
     while [ -L "$script_path" ]; do

@@ -154,7 +154,7 @@ check_cmd() {
     fi
 
     local conflicts=0
-    guard_tmp="$(mktemp)"
+    guard_tmp="$(agent_bus_mktemp)"
     trap 'rm -f "$guard_tmp"' EXIT
     printf '[' > "$guard_tmp"
 

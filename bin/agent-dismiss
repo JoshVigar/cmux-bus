@@ -103,7 +103,7 @@ dismiss_one() {
         closed_note="left pane $surface open"
     fi
 
-    tmp=$(mktemp)
+    tmp=$(agent_bus_mktemp)
     jq --arg n "$name" '
         .agents |= (with_entries(select(.key != $n)))
         | (if (.meta) then .meta |= (with_entries(select(.key != $n))) else . end)

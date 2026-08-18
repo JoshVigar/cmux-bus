@@ -50,7 +50,7 @@ agent_bus_set_paths
 }
 
 bus_file="$AGENT_BUS_FILE"
-tmp_dir="$(mktemp -d)"
+tmp_dir="$(agent_bus_mktemp_dir)"
 raw_file="$tmp_dir/reconstructed.jsonl"
 fixed_file="$tmp_dir/fixed.jsonl"
 report_file="$tmp_dir/report"
