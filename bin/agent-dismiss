@@ -176,5 +176,32 @@ if [ "$name" = "$lead" ] && [ "$force" -eq 0 ]; then
     exit 1
 fi
 
+# Cancel any open inbound threads so the name can be re-used without the
+# replacement session inheriting orphaned work.
+if [ -s "$AGENT_BUS_FILE" ]; then
+    open_threads="$(jq -Rsr --arg n "$name" '
+        def root($m;$e): if ($e.ref == null or $m[$e.ref] == null) then $e.id else root($m;$m[$e.ref]) end;
+        split("\n") | map(fromjson?)
+        | map(select(type == "object" and (.id | type == "string"))) as $events
+        | ($events | map({key:.id, value:.}) | from_entries) as $m
+        | ($events | map(. + {root: root($m;.)}) | group_by(.root) | map(.[-1]))
+        | map(select(.to == $n and (.status | IN("done","blocked") | not)))
+        | .[].root
+    ' "$AGENT_BUS_FILE" 2>/dev/null || true)"
+    cancelled=0
+    while IFS= read -r tid; do
+        [ -n "$tid" ] || continue
+        ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        event=$(jq -nc --arg id "$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')" \
+            --arg ts "$ts" --arg from "$me" --arg to "user" \
+            --arg ref "$tid" \
+            --arg body "auto-cancelled: $name dismissed" \
+            '{id:$id, ts:$ts, from:$from, to:"user", type:"block", ref:$ref, status:"blocked", paths_claimed:[], cwd:".", body:$body}')
+        agent_bus_append_event "$event"
+        cancelled=$((cancelled+1))
+    done <<< "$open_threads"
+    [ "$cancelled" -eq 0 ] || echo "agent-dismiss: cancelled $cancelled open thread(s) for '$name'"
+fi
+
 dismiss_one "$name"
 echo "agent-dismiss: $(jq -c .agents "$AGENT_BUS_AGENTS_FILE")"
